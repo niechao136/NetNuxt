@@ -1,11 +1,13 @@
 using System.IO.Compression;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
+using NetNuxt.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-#region Services
+#region Services Register
 #region Cookie 认证服务
+
 builder.Services.AddAuthentication(opts =>
 {
     opts.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -15,16 +17,21 @@ builder.Services.AddAuthentication(opts =>
     opts.Cookie.Name = "store_vue_identity";
 });
 #endregion
-#region Session
+#region Controller
 
-builder.Services.AddSession(opts =>
+builder.Services.AddControllers();
+#endregion
+#region 跨域服务
+
+builder.Services.AddCors(opts =>
 {
-    // Set a short timeout for easy testing.
-    opts.IdleTimeout = TimeSpan.FromSeconds(10);
-    opts.Cookie.HttpOnly = true;
-    opts.Cookie.SecurePolicy = CookieSecurePolicy.None;
-    // Make the session cookie essential
-    opts.Cookie.IsEssential = true;
+    opts.AddDefaultPolicy(policy =>
+    {
+        policy.SetIsOriginAllowed(_ => true)
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
 });
 #endregion
 #region GZIP 支持
@@ -39,10 +46,49 @@ builder.Services.AddResponseCompression(opts =>
     opts.Providers.Add<GzipCompressionProvider>();
 });
 #endregion
+#region SPA 服务
+
+builder.Services.AddSpaStaticFiles(opts =>
+{
+    opts.RootPath = "wwwroot";
+});
+#endregion
+#region AppSettings 配置
+
+builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AppSettings"));
+#endregion
 #endregion
 
 var app = builder.Build();
 
-app.MapGet("/", () => "Hello World!");
+#region Add Middleware
+#region Cookie 认证服务
+
+app.UseAuthentication();
+#endregion
+#region 跨域服务
+
+app.UseCors();
+app.UseCookiePolicy();
+#endregion
+#region GZIP 支持
+
+app.UseResponseCompression();
+#endregion
+#region SPA 服务
+
+app.UseStaticFiles();
+app.UseSpaStaticFiles();
+app.UseSpa(spa =>
+{
+    spa.Options.SourcePath = "wwwroot";
+});
+#endregion
+#region Controller
+
+app.UseRouting();
+app.MapControllerRoute("app", "app/{controller}/{action=Index}/{id?}");
+#endregion
+#endregion
 
 app.Run();
